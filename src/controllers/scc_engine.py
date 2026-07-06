@@ -375,6 +375,34 @@ class SccEngine:
                 verdicts[cve_id] = status
             yield computed, status
 
+    def get_nvd_cve_json(self, cve_id: str) -> "dict | None":
+        """Return the raw NVD JSON for a CVE from the local NVD-FKIE database.
+
+        The NVD-FKIE git feed stores the same JSON schema as the NVD API v2
+        response, so the result can be passed directly to
+        :func:`~src.controllers.nvd_extract.extract_cve_details`.
+        Returns ``None`` if the CVE is not present in the local database.
+        """
+        from sbom_cve_check.database.db_nvd import NvdFkieVulnDatabase
+        from sbom_cve_check.vuln.vuln import CveId
+        databases = getattr(self._manager, "_databases", None)
+        if not databases:
+            return None
+        try:
+            cve_id_obj = CveId(cve_id.upper().strip())
+        except Exception:
+            return None
+        for dbs in databases.values():
+            for db in dbs:
+                if not isinstance(db, NvdFkieVulnDatabase):
+                    continue
+                # get_vuln may be lru_cache-wrapped by _install_get_vuln_caches;
+                # calling it directly is fine — the cache avoids repeated disk reads.
+                entry = db.get_vuln(cve_id_obj)
+                if entry is not None:
+                    return getattr(entry, "_json", None)
+        return None
+
 
 def get_engine() -> SccEngine:
     """Return the process-wide indexed engine, building it on first use.
@@ -407,3 +435,16 @@ def reset_engine() -> None:
     global _ENGINE
     with _ENGINE_LOCK:
         _ENGINE = None
+
+
+def get_cve_json(cve_id: str) -> "dict | None":
+    """Look up a CVE by ID in the local NVD-FKIE database.
+
+    Returns the raw NVD CVE JSON dict (same schema as NVD API v2) or ``None``
+    if the CVE is not found or the database is not yet initialised.
+    """
+    try:
+        return get_engine().get_nvd_cve_json(cve_id)
+    except Exception as exc:
+        _logger.warning("Failed to look up %s in local NVD database: %s", cve_id, exc)
+        return None

@@ -11,7 +11,6 @@ singletons, which are already polled by /api/nvd/progress and /api/epss/progress
 
 import datetime
 import decimal
-import os
 import re
 import threading
 import time
@@ -22,7 +21,8 @@ from flask.typing import ResponseReturnValue
 
 from ..models import Vulnerability
 from ..extensions import db
-from ..controllers.nvd_db import NVD_DB
+from ..controllers.scc_engine import get_cve_json
+from ..controllers.nvd_extract import extract_cve_details
 from ..controllers.nvd_apply import apply_nvd_update, apply_cvss_update
 from ..controllers.epss_db import EPSS_DB
 from ..controllers.nvd_progress import NVDProgressTracker
@@ -32,25 +32,14 @@ from ..controllers.vulnerabilities import VulnerabilitiesController
 
 _EPSS_BATCH_SIZE = 100
 _NVD_COMMIT_EVERY = 50
-# HIGH: cap prevents unbounded background threads (no API key = 6 s/CVE × N seconds of work)
+# HIGH: cap prevents unbounded background threads
 _MAX_CVE_IDS = 1000
-# HIGH: only accept well-formed CVE identifiers to avoid wasting rate-limit quota
+# HIGH: only accept well-formed CVE identifiers
 _CVE_RE = re.compile(r'^CVE-\d{4}-\d{4,}$')
 _MAX_GHSA_IDS = 500
 _GHSA_RE = re.compile(r'^GHSA-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$')
 _GHSA_COMMIT_EVERY = 20
 _GHSA_SLEEP_INTERVAL = 1.0
-
-
-def _nvd_sleep_interval() -> float:
-    """Return seconds to sleep between NVD API calls based on key presence.
-
-    Without an API key: 5 req / 30 s → 6 s per call.
-    With an API key:   50 req / 30 s → 0.6 s per call.
-
-    Reference: https://nvd.nist.gov/developers/start-here, section "Rate Limits"
-    """
-    return 0.6 if os.getenv("NVD_API_KEY") else 6.0
 
 
 def _safe_commit(label: str) -> None:
@@ -100,9 +89,6 @@ def init_app(app: Flask) -> None:
 
         def _run() -> None:
             with app.app_context():
-                sleep_between = _nvd_sleep_interval()
-                nvd_api_key = os.getenv("NVD_API_KEY")
-                nvd = NVD_DB(nvd_api_key=nvd_api_key)
                 done = 0
                 try:
                     for cve_id in cve_ids:
@@ -113,18 +99,17 @@ def init_app(app: Flask) -> None:
 
                         try:
                             now = datetime.datetime.now(datetime.timezone.utc)
-                            status_code, data = nvd.api_get_cve(cve_id, max_retries=2)
-                            if status_code == 200 and data.get("vulnerabilities"):
-                                cve = data["vulnerabilities"][0]["cve"]
-                                details = NVD_DB.extract_cve_details(cve)
+                            cve = get_cve_json(cve_id)
+                            if cve is not None:
+                                details = extract_cve_details(cve)
                                 rec = db.session.get(Vulnerability, cve_id)
                                 if rec is not None:
                                     apply_nvd_update(rec, details, now)
                                     apply_cvss_update(rec, details, db)
                             else:
                                 print(
-                                    f"[bulk NVD refresh] {cve_id}: status={status_code}, "
-                                    "skipping",
+                                    f"[bulk NVD refresh] {cve_id}: not found in local "
+                                    "NVD database, skipping",
                                     flush=True,
                                 )
                         except Exception as exc:
@@ -137,8 +122,6 @@ def init_app(app: Flask) -> None:
                         )
                         if done % _NVD_COMMIT_EVERY == 0:
                             _safe_commit("bulk NVD refresh")
-                        if done < total:
-                            time.sleep(sleep_between)
 
                     _safe_commit("bulk NVD refresh final")
                     NVDProgressTracker.complete()

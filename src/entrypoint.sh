@@ -84,7 +84,6 @@ Examples:
   /scan/src/entrypoint.sh --project test --variant x86 --match-condition "cvss >= 9.0"
   /scan/src/entrypoint.sh --serve
   /scan/src/entrypoint.sh --report summary.adoc
-  /scan/src/entrypoint.sh --config NVD_API_KEY abc123
 
 Exit codes:
   0   Success
@@ -229,7 +228,6 @@ cmd_scan() {
     export CLIENT_NAME="${CLIENT_NAME:-}"
     export CONTACT_EMAIL="${CONTACT_EMAIL:-}"
     export DOCUMENT_URL="${DOCUMENT_URL:-}"
-    export NVD_API_KEY="${NVD_API_KEY:-}"
     export REFRESH_REMOTE_DELAY="${REFRESH_REMOTE_DELAY:-48h}"
     export HTTP_PROXY="${HTTP_PROXY:-}"
     export HTTPS_PROXY="${HTTPS_PROXY:-}"

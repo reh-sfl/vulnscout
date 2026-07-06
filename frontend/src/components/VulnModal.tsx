@@ -422,13 +422,7 @@ type VariantScopedSnapshot = {
                 const nvdValue = nvdResult.status === "fulfilled" ? nvdResult.value : null;
                 const nvdUpdated = nvdValue?.kind === "success";
                 if (!nvdUpdated) {
-                    if (nvdValue?.kind === "error" && nvdValue.code === "rate_limited") {
-                        errors.push(nvdValue.apiKeyConfigured
-                            ? "NVD rate-limited. Your NVD API key may be exhausted, please try again later."
-                            : "NVD rate-limited. Set NVD API key in settings to reduce throttling.");
-                    } else {
-                        errors.push("NVD API unavailable");
-                    }
+                    errors.push("NVD data unavailable. Try again or run an sbom-cve-check scan.");
                 }
                 if (epssResult.status === "rejected" || epssResult.value === null) {
                     errors.push("EPSS API unavailable");

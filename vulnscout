@@ -103,7 +103,6 @@ Examples:
   vulnscout --project test --match-condition "cvss >= 9.0"
   vulnscout --serve
   vulnscout --report summary.adoc
-  vulnscout config NVD_API_KEY abc123
 
 Exit codes:
   0   Success
