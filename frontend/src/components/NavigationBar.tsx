@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faBox, faShieldHalved, faFileExport, faClockRotateLeft, faClipboardCheck, faGear, faRobot, faArrowsRotate, faCheck } from '@fortawesome/free-solid-svg-icons';
+import { faBox, faShieldHalved, faFileExport, faClockRotateLeft, faClipboardCheck, faGear, faRobot, faArrowsRotate, faCheck, faCommentDots } from '@fortawesome/free-solid-svg-icons';
 import ProjectVariantSelector from './ProjectVariantSelector';
 import type { FrontendScope } from '../handlers/config';
 import VersionDisplay from './VersionDisplay';
@@ -20,12 +20,14 @@ type Props = {
   finishedScanCount?: number;
   activeScanCount?: number;
   onOpenOperationQueue?: () => void;
+  isAgentOpen: boolean;
+  onToggleAgent: () => void;
 };
 
-function NavigationBar({ tab, changeTab, defaultProject, defaultVariant, defaultScope, onApply, trackedScanCount = 0, finishedScanCount = 0, activeScanCount = 0, onOpenOperationQueue }: Readonly<Props>) {
+function NavigationBar({ tab, changeTab, defaultProject, defaultVariant, defaultScope, onApply, trackedScanCount = 0, finishedScanCount = 0, activeScanCount = 0, onOpenOperationQueue, isAgentOpen, onToggleAgent }: Readonly<Props>) {
   return (
-  <nav aria-label="Main navigation">
-    <ul className={["flex flex-row font-bold items-stretch", bgColor].join(' ')}>
+  <nav aria-label="Main navigation" className="overflow-x-auto">
+    <ul className={["flex min-w-max flex-row font-bold items-stretch", bgColor].join(' ')}>
       {/* === VulnScout (Logo + text) === */}
       <li className={[bgHoverColor, tab == 'metrics' && bgActiveColor].join(' ')}>
         <button
@@ -120,6 +122,12 @@ function NavigationBar({ tab, changeTab, defaultProject, defaultVariant, default
 
       {/* Spacer */}
       <li className="grow"></li>
+
+      <li className={[bgHoverColor, isAgentOpen && bgActiveColor].join(' ')}>
+        <button type="button" onClick={onToggleAgent} aria-label="Agent chat" aria-expanded={isAgentOpen} title="Agent chat" className="flex items-center h-full px-4 py-2">
+          <FontAwesomeIcon icon={faCommentDots} className="mr-2" />Agent
+        </button>
+      </li>
 
       {trackedScanCount > 0 && (
         <li className="flex items-stretch">

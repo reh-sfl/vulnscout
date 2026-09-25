@@ -19,6 +19,8 @@ import Review from './Review';
 import type { AssessmentMutation } from './Review';
 import Settings from './Settings';
 import AIContext from './AIContext';
+import AgentChat from '../components/AgentChat';
+import type { AgentContext, AgentViewContext } from '../types/agent';
 import Assessments, { removeDuplicateAssessments, STATUS_VEX_TO_GRAPH } from '../handlers/assessments';
 import Config from "../handlers/config";
 import type { AppConfig } from "../handlers/config";
@@ -76,6 +78,17 @@ function Explorer() {
     const [currentVariantIds, setCurrentVariantIds] = useState<string[] | undefined>(undefined);
     const [currentMultiOperation, setCurrentMultiOperation] = useState<string | undefined>(undefined);
     const [operationQueueOpen, setOperationQueueOpen] = useState(false);
+    const [agentOpen, setAgentOpen] = useState(false);
+    const [vulnerabilityAgentView, setVulnerabilityAgentView] = useState<AgentViewContext>({});
+    const [packagesAgentView, setPackagesAgentView] = useState<AgentViewContext>({});
+    const [reviewAgentView, setReviewAgentView] = useState<AgentViewContext>({});
+    const [metricsAgentView, setMetricsAgentView] = useState<AgentViewContext>({});
+    const [scansAgentView, setScansAgentView] = useState<AgentViewContext>({});
+    const [exportsAgentView, setExportsAgentView] = useState<AgentViewContext>({});
+    const [settingsAgentView, setSettingsAgentView] = useState<AgentViewContext>({});
+    const [aiAgentView, setAiAgentView] = useState<AgentViewContext>({});
+    const [modalVariantScope, setModalVariantScope] = useState<{ vulnId: string; projectId?: string; ids: string[] } | null>(null);
+    const [projectVariantScope, setProjectVariantScope] = useState<{ projectId: string; ids: string[] } | null>(null);
     const [setupRequirement, setSetupRequirement] = useState<
         { kind: 'project' } | { kind: 'variant'; projectId: string } | { kind: 'error' } | null
     >(null);
@@ -406,6 +419,49 @@ function Explorer() {
     }
 
     const [tab, setTab] = useState("metrics");
+    const activeAgentView = tab === 'vulnerabilities' ? vulnerabilityAgentView : tab === 'review' ? reviewAgentView : tab === 'packages' ? packagesAgentView : tab === 'metrics' ? metricsAgentView : tab === 'scans' ? scansAgentView : tab === 'exports' ? exportsAgentView : tab === 'settings' ? settingsAgentView : tab === 'ai' ? aiAgentView : undefined;
+    const openAgentVulnerabilityId = activeAgentView?.openVulnerabilityId;
+
+    useEffect(() => {
+        if (!currentProjectId) return;
+        const controller = new AbortController();
+        Variants.list(currentProjectId, controller.signal).then(variants => {
+            if (!controller.signal.aborted) setProjectVariantScope({ projectId: currentProjectId, ids: variants.map(variant => variant.id) });
+        }).catch(() => {
+            if (!controller.signal.aborted) setProjectVariantScope(null);
+        });
+        return () => controller.abort();
+    }, [currentProjectId]);
+
+    useEffect(() => {
+        if (!openAgentVulnerabilityId) return;
+        const controller = new AbortController();
+        Variants.listByVuln(openAgentVulnerabilityId, controller.signal).then(variants => {
+            if (!controller.signal.aborted) setModalVariantScope({
+                vulnId: openAgentVulnerabilityId,
+                projectId: currentProjectId,
+                ids: variants.filter(variant => !currentProjectId || variant.project_id === currentProjectId).map(variant => variant.id),
+            });
+        }).catch(() => {
+            if (!controller.signal.aborted) setModalVariantScope(null);
+        });
+        return () => controller.abort();
+    }, [openAgentVulnerabilityId, currentProjectId]);
+
+    const agentContext: AgentContext = {
+        page: tab,
+        projectId: currentProjectId,
+        variantId: currentVariantId,
+        baseVariantId: currentBaseVariantId,
+        compareOperation: currentOperation,
+        variantIds: currentVariantIds ?? (!currentVariantId && projectVariantScope?.projectId === currentProjectId ? projectVariantScope?.ids : undefined),
+        multiOperation: currentMultiOperation,
+        view: activeAgentView && {
+            ...activeAgentView,
+            matchingVariantIds: openAgentVulnerabilityId && modalVariantScope?.vulnId === openAgentVulnerabilityId && modalVariantScope.projectId === currentProjectId
+                ? modalVariantScope.ids : undefined,
+        },
+    };
 
     // This function ensures vulns get reset when switching outside filtering context
     function handleTabChange(newTab: string) {
@@ -439,11 +495,13 @@ function Explorer() {
                     finishedScanCount={finishedScanCount}
                     activeScanCount={activeScanCount}
                     onOpenOperationQueue={() => setOperationQueueOpen(true)}
+                    isAgentOpen={agentOpen}
+                    onToggleAgent={() => setAgentOpen(open => !open)}
                 />
             </header>
             <OperationQueueModal isOpen={operationQueueOpen} onClose={() => setOperationQueueOpen(false)} />
             <ModalShell
-                isOpen={tab === 'metrics' && setupRequirement !== null}
+                isOpen={!agentOpen && tab === 'metrics' && setupRequirement !== null}
                 title={setupRequirement?.kind === 'project'
                     ? 'Add your first project'
                     : setupRequirement?.kind === 'variant'
@@ -460,7 +518,14 @@ function Explorer() {
                             ? 'VulnScout needs a variant before it can display metrics for your project.'
                             : 'VulnScout could not load the project list. Check the connection and try again.'}
                 </p>
-                <div className="mt-5 flex justify-end">
+                <div className="mt-5 flex justify-end gap-2">
+                    <button
+                        type="button"
+                        onClick={() => { setSetupRequirement(null); setAgentOpen(true); }}
+                        className="rounded-md border border-sky-700 px-4 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-neutral-800"
+                    >
+                        Ask agent
+                    </button>
                     <button
                         type="button"
                         onClick={() => {
@@ -483,7 +548,8 @@ function Explorer() {
                 </div>
             </ModalShell>
 
-            <main id="main-content" aria-label={tabLabels[tab] ?? 'Content'} className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex flex-1 min-h-0">
+            <main id="main-content" aria-label={tabLabels[tab] ?? 'Content'} className="flex-1 min-w-0 flex flex-col overflow-hidden">
             <div className="px-8 pt-4">
                 <MessageBanner
                     type={bannerType}
@@ -513,12 +579,15 @@ function Explorer() {
                     setTab={setTab}
                     appendCVSS={appendCVSS}
                     projectId={currentProjectId}
+                    onAgentContextChange={setMetricsAgentView}
+                    onOpenAgent={() => setAgentOpen(true)}
                 />}
                 {tab === 'packages' && <TablePackages
                     key={tablePreferenceScopeKey}
                     packages={pkgs}
                     vulnerabilities={vulns}
                     preferenceScopeKey={tablePreferenceScopeKey}
+                    onAgentContextChange={setPackagesAgentView}
                     onShowVulns={showVulnsForPackage}
                     onLoadOutdatedPackages={hasOutdatedPackagesScope ? loadOutdatedPackages : undefined}
                     outdatedScopeKey={outdatedPackagesScopeKey}
@@ -545,16 +614,19 @@ function Explorer() {
                     onMissingEuvdDataBannerDismissedChange={setMissingEuvdDataBannerDismissed}
                     missingPublishedDateDataBannerDismissed={missingPublishedDateDataBannerDismissed}
                     onMissingPublishedDateDataBannerDismissedChange={setMissingPublishedDateDataBannerDismissed}
+                    onAgentContextChange={setVulnerabilityAgentView}
+                    onOpenAgent={() => setAgentOpen(true)}
                 />}
                 {tab === 'scans' && <ScanHistory
+                    onAgentContextChange={setScansAgentView}
                     variantId={currentVariantId}
                     projectId={currentVariantId ? undefined : currentProjectId}
                     variantIds={currentVariantIds}
                     onScanComplete={handleScanComplete}
                 />}
-                {tab === 'review' && <Review variantId={currentVariantId} projectId={currentVariantId ? undefined : currentProjectId} onAssessmentChanged={handleAssessmentChanged} />}
-                {tab === 'exports' && <Exports variantId={currentVariantId} projectId={currentProjectId} variantIds={currentVariantIds} />}
-                {tab === 'settings' && <Settings initialTab={settingsDestination?.tab} onDataChanged={(message) => {
+                {tab === 'review' && <Review variantId={currentVariantId} projectId={currentVariantId ? undefined : currentProjectId} onAssessmentChanged={handleAssessmentChanged} onAgentContextChange={setReviewAgentView} onOpenAgent={() => setAgentOpen(true)} />}
+                {tab === 'exports' && <Exports variantId={currentVariantId} projectId={currentProjectId} variantIds={currentVariantIds} onAgentContextChange={setExportsAgentView} />}
+                {tab === 'settings' && <Settings onAgentContextChange={setSettingsAgentView} initialTab={settingsDestination?.tab} onDataChanged={(message) => {
                     if (message) setLoadingMessage(message);
                     Config.get().then(config => setDefaultConfig(config)).catch(() => {});
                     loadSetupRequirement();
@@ -569,9 +641,13 @@ function Explorer() {
                         setLoadingMessage("Loading data...");
                     }
                 }} />}
-                {tab === 'ai' && <AIContext />}
+                {tab === 'ai' && <AIContext onAgentContextChange={setAiAgentView} />}
             </div>
             </main>
+            {agentOpen && <aside aria-label="Agent chat" className={`fixed inset-0 z-[110] w-full border-l border-neutral-700 bg-neutral-950 text-neutral-100 md:w-1/3 md:min-w-[320px] md:shrink-0 ${agentContext.view?.openVulnerabilityId ? 'md:inset-y-0 md:right-0 md:left-auto' : 'md:static'}`}>
+                <AgentChat context={agentContext} onClose={() => setAgentOpen(false)} />
+            </aside>}
+            </div>
         </div>
     )
 }

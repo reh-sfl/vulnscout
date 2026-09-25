@@ -39,8 +39,10 @@ import Variants from "../handlers/variant";
 import type { Variant } from "../handlers/variant";
 import Vulnerabilities from "../handlers/vulnerabilities";
 import ModalShell, { ModalActions, ModalButton } from "../components/ModalShell";
+import type { AgentViewContext } from "../types/agent";
 
 type Props = {
+    onAgentContextChange?: (context: AgentViewContext) => void;
     variantId?: string;
     projectId?: string;
     variantIds?: string[];
@@ -1025,7 +1027,7 @@ function DiffModal({ scanId, scanType, onClose }: { scanId: string; scanType: st
 // Main page
 // ---------------------------------------------------------------------------
 
-function ScanHistory({ variantId, projectId, variantIds, onScanComplete }: Readonly<Props>) {
+function ScanHistory({ variantId, projectId, variantIds, onScanComplete, onAgentContextChange }: Readonly<Props>) {
     const docUrl = useDocUrl("interactive-mode.html#scan-history");
     const [scans, setScans] = useState<Scan[]>([]);
     const [loading, setLoading] = useState(true);
@@ -1447,6 +1449,20 @@ function ScanHistory({ variantId, projectId, variantIds, onScanComplete }: Reado
         if (src === 'scc' && !showScc) return false;
         return true;
     });
+
+    const visibleScanIds = filteredScans.map(scan => scan.id).join(',');
+    const selectedScanTypesKey = [...selectedScanTypes].sort().join(',');
+    const selectedRefreshTypesKey = [...selectedRefreshTypes].sort().join(',');
+    useEffect(() => {
+        onAgentContextChange?.({
+            section: openDiffId ? `scan diff: ${openDiffType}` : openGlobalId ? 'global result' : 'scan history',
+            openScanId: openDiffId ?? openGlobalId ?? undefined,
+            visibleScanIds: visibleScanIds ? visibleScanIds.split(',') : [],
+            selectedScanTypes: selectedScanTypesKey ? selectedScanTypesKey.split(',') : [],
+            selectedRefreshTypes: selectedRefreshTypesKey ? selectedRefreshTypesKey.split(',') : [],
+            refreshMode, hideEmptyScans, excludeKernel, excludeNative,
+        });
+    }, [visibleScanIds, selectedScanTypesKey, selectedRefreshTypesKey, refreshMode, hideEmptyScans, excludeKernel, excludeNative, openDiffId, openDiffType, openGlobalId, onAgentContextChange]);
 
     // -- Export All (grouped by project/variant) --
     async function handleExportAll() {

@@ -39,6 +39,7 @@ type Props = {
     isEditing?: boolean;
     readOnly?: boolean;
     onClose: () => void;
+    onOpenAgent?: () => void;
     appendAssessment: (added: Assessment) => void;
     appendCVSS: (vulnId: string, vector: string) => CVSS | null;
     patchVuln: (vulnId: string, replace_vuln: Vulnerability) => void;
@@ -136,7 +137,7 @@ type VariantScopedSnapshot = {
 };
 
   function VulnModal(props: Readonly<Props>) {
-        const { vuln, detailsLoading = false, detailsError = false, isEditing: initialIsEditing, readOnly = false, onClose, appendAssessment, appendCVSS, patchVuln, vulnerabilities, currentIndex, onNavigate, variantId, projectId } = props;
+        const { vuln, detailsLoading = false, detailsError = false, isEditing: initialIsEditing, readOnly = false, onClose, onOpenAgent, appendAssessment, appendCVSS, patchVuln, vulnerabilities, currentIndex, onNavigate, variantId, projectId } = props;
     const docUrl = useDocUrl("interactive-mode.html#vulnerability-details");
     const [isEditing, setIsEditing] = useState(initialIsEditing);
     const [showCustomCvss, setShowCustomCvss] = useState(false);
@@ -1516,6 +1517,7 @@ type VariantScopedSnapshot = {
 
     const headerActions = (
         <>
+            {onOpenAgent && <button type="button" onClick={onOpenAgent} aria-label={`Ask agent about ${vuln.id}`} title="Ask agent" className="px-2 py-2 text-cyan-300 hover:text-cyan-100"><FontAwesomeIcon icon={faRobot} size="lg" /></button>}
             <div className="relative flex items-center gap-2 px-2 py-2">
                 <HelpPopover
                     ariaLabel="shortcut helper"

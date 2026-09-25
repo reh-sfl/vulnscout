@@ -27,6 +27,7 @@ import EUVDProgressHandler from "../handlers/euvd_progress";
 import type { EUVDProgress } from "../handlers/euvd_progress";
 import useDismissablePopover from "../hooks/useDismissablePopover";
 import PopoverSurface from "../components/PopoverSurface";
+import type { AgentViewContext } from "../types/agent";
 
 type SourceBanner = { message: string; type: 'error' | 'success' } | null;
 
@@ -105,6 +106,8 @@ type Props = {
     onMissingEuvdDataBannerDismissedChange?: (dismissed: boolean) => void;
     missingPublishedDateDataBannerDismissed?: boolean;
     onMissingPublishedDateDataBannerDismissedChange?: (dismissed: boolean) => void;
+    onAgentContextChange?: (context: AgentViewContext) => void;
+    onOpenAgent?: () => void;
 };
 
 const dt_options: Intl.DateTimeFormatOptions = {
@@ -387,7 +390,7 @@ const DEFAULT_VISIBLE_COLUMNS = [
     'ID', 'Severity', 'EU KEV', 'EPSS Score', 'SBOM Affected', 'Variants', 'Status', 'Last Assessed',
 ];
 
-function TableVulnerabilities ({ vulnerabilities, filterLabel, filterValue, filterVulnerabilityIds, preferenceScopeKey = 'unscoped', appendAssessment, appendCVSS, patchVuln, variantId, projectId, baseVariantId, compareOperation, variantIds, multiOperation, onRefreshComplete, missingEuvdDataBannerDismissed, onMissingEuvdDataBannerDismissedChange, missingPublishedDateDataBannerDismissed, onMissingPublishedDateDataBannerDismissedChange }: Readonly<Props>) {
+function TableVulnerabilities ({ vulnerabilities, filterLabel, filterValue, filterVulnerabilityIds, preferenceScopeKey = 'unscoped', appendAssessment, appendCVSS, patchVuln, variantId, projectId, baseVariantId, compareOperation, variantIds, multiOperation, onRefreshComplete, missingEuvdDataBannerDismissed, onMissingEuvdDataBannerDismissedChange, missingPublishedDateDataBannerDismissed, onMissingPublishedDateDataBannerDismissedChange, onAgentContextChange, onOpenAgent }: Readonly<Props>) {
     const preferenceKey = `vulnscout.tables.vulnerabilities.${encodeURIComponent(preferenceScopeKey)}`;
 
     const docUrl = useDocUrl("interactive-mode.html#vulnerability-table");
@@ -1538,6 +1541,15 @@ function TableVulnerabilities ({ vulnerabilities, filterLabel, filterValue, filt
         return Object.entries(selectedRows).flatMap(([id, selected]) => selected ? [id] : [])
     }, [selectedRows])
 
+    useEffect(() => {
+        onAgentContextChange?.({
+            visibleVulnerabilityIds: searchFilteredData.map(vuln => vuln.id),
+            selectedVulnerabilityIds: selectedVulns,
+            openVulnerabilityId: modalVuln?.id,
+            search,
+        });
+    }, [onAgentContextChange, searchFilteredData, selectedVulns, modalVuln?.id, search]);
+
     const availableStatuses = useMemo(() => {
         const statuses = new Set<string>();
         vulnerabilities.forEach(vuln => {
@@ -2003,6 +2015,7 @@ function TableVulnerabilities ({ vulnerabilities, filterLabel, filterValue, filt
 
         {modalVuln != undefined && <VulnModal
             vuln={modalVuln}
+            onOpenAgent={onOpenAgent}
             detailsLoading={modalDetailsLoading}
             detailsError={modalDetailsError}
             isEditing={isEditing}
