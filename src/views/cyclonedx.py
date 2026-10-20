@@ -11,6 +11,7 @@ from ..helpers.datetime_utils import normalize_timestamp_for_sort
 from cyclonedx.model.bom import Bom
 from cyclonedx.model.bom_ref import BomRef
 from cyclonedx.model.dependency import Dependency
+from cyclonedx.model import ExternalReference, ExternalReferenceType, XsUri
 from cyclonedx.output.json import JsonV1Dot4, JsonV1Dot5, JsonV1Dot6
 from cyclonedx.model.component import Component, ComponentType
 import cyclonedx.model.vulnerability
@@ -177,6 +178,12 @@ class CycloneDx:
                 package.add_purl(str(component.purl))
             if component.cpe:
                 package.add_cpe(component.cpe)
+            for reference in component.external_references:
+                if reference.type in {
+                    ExternalReferenceType.SCM, ExternalReferenceType.DISTRIBUTION,
+                    ExternalReferenceType.SOURCE_DISTRIBUTION,
+                }:
+                    package.add_source_url(str(reference.url))
             package.generate_generic_cpe()
             package.generate_generic_purl()
 
@@ -338,6 +345,10 @@ class CycloneDx:
                 group=group if group != '*' else None,
                 cpe=pkg.cpe[0],
                 purl=PackageURL.from_string(pkg.purl[0]),
+                external_references=[
+                    ExternalReference(type=ExternalReferenceType.SCM, url=XsUri(url))
+                    for url in pkg.source_urls
+                ],
             )
             self.sbom.components.add(cmp)
             self._component_refs[pkg.string_id] = cmp.bom_ref

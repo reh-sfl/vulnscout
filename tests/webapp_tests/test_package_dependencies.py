@@ -50,6 +50,96 @@ def _package_in_scan(scan_id, string_id):
     return package.with_sbom_evidence(**evidence.get(package.id, {}))
 
 
+def test_cyclonedx_git_revisions_are_scoped_persisted_and_replaced(app, tmp_path):
+    from src.helpers.export_scope import compute_export_scope
+    from src.views.cyclonedx import CycloneDx
+    from src.views.spdx import SPDX
+    from src.views.spdx3 import SPDX3
+
+    def document(revision=None):
+        return {
+            'bomFormat': 'CycloneDX', 'specVersion': '1.6', 'version': 1,
+            'components': [{
+                'type': 'library', 'bom-ref': 'lib', 'name': 'lib', 'version': '1.0',
+                'hashes': [{'alg': 'SHA-1', 'content': 'f' * 40}],
+                'externalReferences': [
+                    {'type': 'vcs', 'url': f'git+https://example.org/lib.git@{revision}'},
+                ] if revision else [],
+            }],
+        }
+
+    variant_a, scan_a = _scan(app, tmp_path, 'cdx-a', document('a' * 40), fmt='cdx')
+    variant_b, _ = _scan(app, tmp_path, 'cdx-b', document(), fmt='cdx')
+    variant_c, _ = _scan(app, tmp_path, 'cdx-c', document('c' * 64), fmt='cdx')
+    db.session.remove()
+    assert len(Package.get_all()) == 1
+    client = app.test_client()
+    for variant_id, revision in [(variant_a, 'a' * 40), (variant_b, None), (variant_c, 'c' * 64)]:
+        row = client.get(f'/api/packages?variant_id={variant_id}').json[0]
+        assert row['version'] == row['release_version'] == '1.0'
+        assert row['source_revision'] == revision
+        assert not row['revision_conflict'] and not row['version_conflict']
+        graph = client.get(f'/api/package-dependencies?variant_id={variant_id}').json['documents'][0]['packages'][0]
+        assert graph['source_revision'] == revision
+        for preload in (False, True):
+            controllers = ControllersCache(scope=compute_export_scope(variant_id=variant_id))
+            if preload:
+                controllers.packages._preload_cache()
+            assert controllers.packages.get('lib@1.0').version_info['source_revision'] == revision
+            for exporter in (CycloneDx, SPDX, SPDX3):
+                output = json.loads(exporter(controllers).output_as_json())
+                serialized = json.dumps(output)
+                assert ('git+https://example.org/lib.git@' in serialized) == (revision is not None)
+                if revision is not None:
+                    assert revision in serialized
+                if exporter is CycloneDx:
+                    parser = CycloneDx(ControllersCache())
+                    parser.load_from_dict(output)
+                    parser.parse_and_merge()
+                    assert parser.packagesCtrl.get('lib@1.0').version_info['source_revision'] == revision
+    combined = client.get(f'/api/packages?variant_ids={variant_a},{variant_c}').json[0]
+    assert combined['source_revision'] is None
+    assert combined['revision_conflict']
+    assert not combined['version_conflict']
+    path = Path(SBOMDocument.get_by_scan(scan_a)[0].path)
+    for revision in ('b' * 40, None):
+        path.write_text(json.dumps(document(revision)))
+        read_inputs(ControllersCache(), scan_a)
+        db.session.remove()
+        row = client.get(f'/api/packages?variant_id={variant_a}').json[0]
+        assert row['source_revision'] == revision
+        assert not row['revision_conflict']
+        assert client.get(f'/api/packages?variant_id={variant_c}').json[0]['source_revision'] == 'c' * 64
+
+
+def test_cyclonedx_companion_documents_keep_revision_evidence_local(app, tmp_path):
+    project = Project.create('cdx-companions')
+    variant = Variant.create('default', project.id)
+    variant_id = variant.id
+    scan = Scan.create('SBOM', variant.id)
+    scan_id = scan.id
+    for index, revision in enumerate(['a' * 40, 'b' * 40, None]):
+        path = tmp_path / f'companion-{index}.cdx.json'
+        path.write_text(json.dumps({
+            'bomFormat': 'CycloneDX', 'specVersion': '1.6', 'version': 1,
+            'components': [{
+                'type': 'library', 'name': 'lib', 'version': '1.0',
+                'externalReferences': [
+                    {'type': 'vcs', 'url': f'git+https://example.org/lib.git@{revision}'},
+                ] if revision else [],
+            }],
+        }))
+        SBOMDocument.create(str(path), path.name, scan_id, format='cdx')
+    read_inputs(ControllersCache(), scan_id)
+    db.session.remove()
+    client = app.test_client()
+    row = client.get(f'/api/packages?variant_id={variant_id}').json[0]
+    assert row['revision_conflict']
+    graphs = client.get(f'/api/package-dependencies?variant_id={variant_id}').json['documents']
+    assert [doc['packages'][0]['source_revision'] for doc in graphs] == ['a' * 40, 'b' * 40, None]
+    assert not any(doc['packages'][0]['revision_conflict'] for doc in graphs)
+
+
 def _spdx3():
     return {'@graph': [
         {'type': 'CreationInfo', 'specVersion': '3.0.1'},

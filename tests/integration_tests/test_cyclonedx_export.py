@@ -19,6 +19,26 @@ def cdx_exporter():
     return CycloneDx(ControllersCache())
 
 
+@pytest.mark.parametrize("version", [4, 5, 6])
+@pytest.mark.parametrize("revisions", [["a" * 40], ["a" * 40, "b" * 64]])
+def test_export_pinned_git_sources_round_trip(cdx_exporter, version, revisions):
+    urls = [f"git+https://example.org/lib.git@{revision}" for revision in revisions]
+    cdx_exporter.packagesCtrl.add(Package("lib", "1.0", source_urls=urls))
+    output = json.loads(cdx_exporter.output_as_json(version))
+    component = output["components"][0]
+    assert component["version"] == "1.0"
+    assert component["externalReferences"] == [{"type": "vcs", "url": url} for url in urls]
+    assert "hashes" not in component
+    parser = CycloneDx(ControllersCache())
+    parser.load_from_dict(output)
+    parser.parse_and_merge()
+    package = parser.packagesCtrl.get("lib@1.0")
+    assert package.source_urls == urls
+    assert package.version_info["release_version"] == "1.0"
+    assert package.version_info["source_revision"] == (revisions[0] if len(revisions) == 1 else None)
+    assert package.version_info["revision_conflict"] == (len(revisions) > 1)
+
+
 def test_export_empty_json(cdx_exporter):
     output = json.loads(cdx_exporter.output_as_json(6, "MY_AUTHOR_NAME"))
     try:

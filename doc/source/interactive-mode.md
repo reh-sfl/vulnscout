@@ -88,6 +88,33 @@ A release version and a commit hash describe separate fields, not a conflict.
 
 Reimport older SBOMs to populate source revisions from the original files.
 
+CycloneDX imports also read explicitly revision-pinned Git URLs from component
+`externalReferences` of type `vcs`, `distribution`, or `source-distribution`.
+For example, this component retains release version `1.6.18` and separately
+displays the pinned commit as its source revision:
+
+```json
+{
+  "type": "library",
+  "name": "type-is",
+  "version": "1.6.18",
+  "externalReferences": [
+    {
+      "type": "vcs",
+      "url": "git+https://github.com/jshttp/type-is.git@0123456789abcdef0123456789abcdef01234567"
+    }
+  ]
+}
+```
+
+Full 40-character SHA-1 and 64-character SHA-256 Git revisions are supported,
+including on nested components and package roots included in the dependency
+graph. CycloneDX 1.4, 1.5, and 1.6 exports retain these URLs as `vcs` references.
+Evidence stays scoped to the originating SBOM document, just as for SPDX.
+Component `hashes` describe artifact checksums; they are not treated as Git
+commits. An unpinned repository URL or a short hash does not identify a source
+revision either.
+
 ### Filters
 
 - **Source**: restrict the table to packages originating from a specific SBOM source (e.g. a particular SPDX or CycloneDX document).

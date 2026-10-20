@@ -15,6 +15,61 @@ def cdx_parser():
     return CycloneDx(ControllersCache())
 
 
+@pytest.mark.parametrize("spec_version", ["1.4", "1.5", "1.6"])
+@pytest.mark.parametrize("location", ["top-level", "nested", "root"])
+@pytest.mark.parametrize("reference_type", ["vcs", "distribution", "source-distribution"])
+@pytest.mark.parametrize("revision", ["a" * 40, "B" * 64])
+def test_parse_pinned_git_source(cdx_parser, spec_version, location, reference_type, revision):
+    url = f"git+https://example.org/lib.git@{revision}"
+    component = {
+        "type": "library", "bom-ref": "lib", "name": "lib", "version": "1.0",
+        "externalReferences": [{"type": reference_type, "url": url}],
+        "hashes": [{"alg": "SHA-1", "content": "f" * 40}],
+    }
+    document = {"bomFormat": "CycloneDX", "specVersion": spec_version, "version": 1}
+    if location == "root":
+        document["metadata"] = {"component": component}
+        document["components"] = [{"type": "library", "bom-ref": "child", "name": "child"}]
+        document["dependencies"] = [{"ref": "lib", "dependsOn": ["child"]}]
+    elif location == "nested":
+        document["components"] = [{"type": "container", "name": "image", "components": [component]}]
+    else:
+        document["components"] = [component]
+    cdx_parser.load_from_dict(document)
+    cdx_parser.parse_and_merge()
+    package = cdx_parser.packagesCtrl.get("lib@1.0")
+    assert package.source_urls == [url]
+    assert package.version_info["source_revision"] == revision.lower()
+    assert package.version_info["release_version"] == "1.0"
+    assert not package.version_info["revision_conflict"]
+    assert not package.version_info["version_conflict"]
+
+
+@pytest.mark.parametrize("reference", [
+    None,
+    {"type": "vcs", "url": "git+https://example.org/lib.git"},
+    {"type": "vcs", "url": "git+https://example.org/lib.git@abcdef0"},
+    {"type": "vcs", "url": "git+https://example.org/lib.git@v1.0"},
+    {"type": "distribution", "url": "https://example.org/lib.tar.gz"},
+    {"type": "website", "url": "git+https://example.org/lib.git@" + "a" * 40},
+])
+def test_checksums_and_unpinned_references_are_not_commits(cdx_parser, reference):
+    # The SHA-1 checksum is from CycloneDX/bom-examples' juice-shop v11.1.2 BOM.
+    cdx_parser.load_from_dict({
+        "bomFormat": "CycloneDX", "specVersion": "1.6", "version": 1,
+        "components": [{
+            "type": "library", "name": "type-is", "version": "1.6.18",
+            "hashes": [{"alg": "SHA-1", "content": "4e552cd05df09467dcbc4ef739de89f2cf37c131"}],
+            "externalReferences": [reference] if reference else [],
+        }],
+    })
+    cdx_parser.parse_and_merge()
+    package = cdx_parser.packagesCtrl.get("type-is@1.6.18")
+    assert package.source_urls == []
+    assert package.version_info["source_revision"] is None
+    assert package.version_info["release_version"] == "1.6.18"
+
+
 def test_parse_empty_json(cdx_parser):
     cdx_parser.load_from_dict(json.loads("""{
         "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
