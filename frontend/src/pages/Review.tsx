@@ -9,7 +9,7 @@ import { asVulnerability } from "../handlers/vulnerabilities";
 import VulnModal from "../components/VulnModal";
 import FilterOption from "../components/FilterOption";
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCircleQuestion, faCircleInfo, faFileExport, faFileImport, faPenToSquare, faTrash, faBook, faCheck, faXmark, faCopy, faTriangleExclamation, faRobot } from '@fortawesome/free-solid-svg-icons';
+import { faCaretDown, faCircleQuestion, faCircleInfo, faFileExport, faFileImport, faPenToSquare, faTrash, faBook, faCheck, faXmark, faCopy, faTriangleExclamation, faRobot } from '@fortawesome/free-solid-svg-icons';
 import { detectReviewExportFormat, downloadJson, sanitizeFilename, formatTimestampForFilename } from '../helpers/exportJson';
 import AssessmentReviews, { verdictOf, describeReviewSummary } from "../handlers/assessmentReviews";
 import type { AssessmentReview, ReviewVerdict } from "../handlers/assessmentReviews";
@@ -1728,17 +1728,20 @@ function Review({ variantId, projectId, onAssessmentChanged, onAgentContextChang
                             />
                         )}
 
-                        <label className="flex items-center gap-2 text-white">
+                        <label className={`relative ml-4 flex items-center gap-1 rounded border bg-sky-900 px-2 py-1 text-white hover:bg-sky-950 focus-within:bg-sky-950 ${
+                            outdatedFilter === 'all' ? 'border-transparent' : 'border-cyan-400'
+                        }`}>
                             Outdated
                             <select
-                                className="rounded bg-slate-700 px-2 py-1"
+                                className="cursor-pointer appearance-none bg-transparent pr-4"
                                 value={outdatedFilter}
                                 onChange={event => setOutdatedFilter(event.target.value as OutdatedFilter)}
                             >
-                                <option value="all">All</option>
-                                <option value="only">Outdated</option>
-                                <option value="hide">Not outdated</option>
+                                <option className="bg-sky-900 text-white" value="all">All</option>
+                                <option className="bg-sky-900 text-white" value="only">Outdated</option>
+                                <option className="bg-sky-900 text-white" value="hide">Not outdated</option>
                             </select>
+                            <FontAwesomeIcon aria-hidden="true" icon={faCaretDown} className="pointer-events-none absolute right-2" />
                         </label>
                         <div className="flex items-center mx-3">
                             <div className="border-l h-8 dark:border-neutral-300"></div>
